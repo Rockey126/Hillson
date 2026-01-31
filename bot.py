@@ -162,7 +162,7 @@ def handle_search(message):
 
     bot.send_message(message.chat.id, "🔍 Searching...")
     try:
-        response = requests.get(f"https://username-brzb.vercel.app/get-info?phone={message.text.strip()}", timeout=15)
+        response = requests.get(f"https://username-brzb.vercel.app/get-info?phone={number}", timeout=15)
         data = response.json()
         if data.get("status") == True and data.get("results") and len(data["results"]) > 0:
             update_credits(uid, -2) # -2 Credits per search
