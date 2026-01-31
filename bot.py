@@ -1,3 +1,4 @@
+a
 import telebot
 from telebot import types
 import requests
@@ -162,18 +163,22 @@ def handle_search(message):
 
     bot.send_message(message.chat.id, "🔍 Searching...")
     try:
-        response = requests.get(f"https://username-brzb.vercel.app/get-info?phone={number}", timeout=15)
-        data = response.json()
-        if data.get("status") == True and data.get("results") and len(data["results"]) > 0:
-            update_credits(uid, -2) # -2 Credits per search
-            res = data["results"][0]
+        api_url = f"https://username-brzb.vercel.app/get-info?phone={phone}"
+        res = requests.get(api_url, timeout=15).json()
+
+        if res.get("status") == True and res.get("results"):
+            update_credits(uid, -2)
+            data = res["results"][0]
+            
+            # Formatting all the details you requested
             details = (
-                f"✅ **Details Found**\n━━━━━━━━━━━━━━━━━━\n"
-                f"👤 Name: `{res.get('name', 'N/A')}`\n"
-                f"👨‍👦 Father: `{res.get('father_name', 'N/A')}`\n"
-                f"📱 Mobile: `{res.get('mobile', 'N/A')}`\n"
-                f"📲 Alt Mobile: `{res.get('alt_mobile', 'N/A')}`\n"
-                f"🆔 ID Number: `{res.get('id_number', 'N/A')}`\n"
+                f"✅ Details Found\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"👤 Name: {data.get('name', 'N/A')}\n"
+                f"👨‍👦 Father: {data.get('father_name', 'N/A')}\n"
+                f"📱 Mobile: {data.get('mobile', 'N/A')}\n"
+                f"📲 Alt Mobile: {data.get('alt_mobile', 'N/A')}\n"
+                f"🆔 ID Number: {data.get('id_number', 'N/A')}\n"
                 f"📍 Address: `{res.get('address', 'N/A')}`\n━━━━━━━━━━━━━━━━━━\n"
                 f"💰 Balance: {get_credits(uid)} credits"
             )
