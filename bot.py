@@ -1,4 +1,3 @@
-import os
 import telebot
 import requests
 import json
@@ -10,12 +9,12 @@ import json
 BOT_TOKEN = "8097849910:AAGL557NBwfu2Inv7IjLwnrc-xvAHpzaiKk"
 bot = telebot.TeleBot(BOT_TOKEN)
 
-OWNER_ID = 5768665344  # ✅ Owner ID Added
+OWNER_ID = 5768665344  # ✅ Fixed Owner ID
 
 DATA_FILE = "users.json"
 
-SEARCH_COST = 2
-REFERRAL_REWARD = 1
+SEARCH_COST = 2        # ✅ Per Search Cost = 2 Credits
+REFERRAL_REWARD = 1    # ✅ Per Referral Reward = 1 Credit
 
 
 # ==============================
@@ -73,12 +72,14 @@ def start(message):
     bot.reply_to(
         message,
         "👋 Welcome!\n\n"
-        "📌 Send phone number to search.\n"
+        "📌 Search Number Using:\n"
+        "/search 9876543210\n\n"
         f"💳 Each search costs {SEARCH_COST} credits.\n\n"
         "🧾 Commands:\n"
         "/balance - Check Credits\n"
         "/refer - Get Referral Link\n"
-        "/buy - Buy Credits"
+        "/buy - Buy Credits\n"
+        "/search - Search Phone Number"
     )
 
 
@@ -92,7 +93,6 @@ def balance(message):
     users = load_users()
 
     credits = users.get(str(uid), {}).get("credits", 0)
-
     bot.reply_to(message, f"💳 Your Balance: {credits} Credits")
 
 
@@ -108,7 +108,7 @@ def refer(message):
     bot.reply_to(
         message,
         f"🎁 Referral Link:\n{link}\n\n"
-        f"✅ Earn {REFERRAL_REWARD} credit per referral!"
+        f"✅ Earn {REFERRAL_REWARD} Credit Per Referral!"
     )
 
 
@@ -121,8 +121,8 @@ def buy(message):
     bot.reply_to(
         message,
         "💰 Buy Credits Option:\n\n"
-        "📌 Contact Owner to Buy Credits:\n"
-        "@YourUsernameHere\n\n"
+        "📌 Contact Owner:\n"
+        "@rockeyxjoker\n\n"
         "Available Packs:\n"
         "10 Credits = ₹50\n"
         "50 Credits = ₹200\n"
@@ -136,8 +136,10 @@ def buy(message):
 
 @bot.message_handler(commands=["addcredit"])
 def addcredit(message):
-    if message.from_user.id != OWNER_ID:
-        return bot.reply_to(message, "🚫 Only Owner can use this.")
+
+    # ✅ Only Owner Allowed
+    if int(message.from_user.id) != OWNER_ID:
+        return bot.reply_to(message, "🚫 Only Owner can use this command!")
 
     try:
         _, user_id, amount = message.text.split()
@@ -145,24 +147,31 @@ def addcredit(message):
         amount = int(amount)
 
         users = load_users()
+
         if user_id not in users:
             users[user_id] = {"credits": 0, "referred": False}
 
         users[user_id]["credits"] += amount
         save_users(users)
 
-        bot.reply_to(message, f"✅ Added {amount} credits to {user_id}")
+        bot.reply_to(
+            message,
+            f"✅ Added {amount} Credits to User {user_id}"
+        )
 
     except:
-        bot.reply_to(message, "❌ Usage:\n/addcredit userID amount")
+        bot.reply_to(
+            message,
+            "❌ Usage:\n/addcredit userID amount\n\nExample:\n/addcredit 123456789 10"
+        )
 
 
 # ==============================
-# PHONE SEARCH HANDLER
+# SEARCH COMMAND
 # ==============================
 
-@bot.message_handler(func=lambda message: True)
-def get_info(message):
+@bot.message_handler(commands=["search"])
+def search_command(message):
     uid = message.from_user.id
     users = load_users()
 
@@ -174,53 +183,66 @@ def get_info(message):
     if users[str(uid)]["credits"] < SEARCH_COST:
         return bot.reply_to(
             message,
-            "❌ Not enough credits!\n\n"
-            f"Each search costs {SEARCH_COST} credits.\n"
-            "Use /buy to purchase credits."
+            f"❌ Not enough credits!\nEach search costs {SEARCH_COST} credits.\nUse /buy to purchase."
         )
 
-    number = message.text.strip()
+    try:
+        _, number = message.text.split()
 
-    if number.isdigit() and len(number) >= 10:
+        if not (number.isdigit() and len(number) >= 10):
+            return bot.reply_to(message, "🚫 Invalid number!\nUse: /search 9876543210")
+
         bot.send_message(message.chat.id, "🔍 Searching Database...")
 
         api_url = f"https://username-brzb.vercel.app/get-info?phone={number}"
+        response = requests.get(api_url, timeout=10)
+        data = response.json()
 
-        try:
-            response = requests.get(api_url, timeout=10)
-            data = response.json()
+        if data.get("status") == True and data.get("results"):
 
-            if data.get("status") == True and data.get("results"):
-                res = data["results"][0]
+            res = data["results"][0]
 
-                # Deduct Credits
-                users[str(uid)]["credits"] -= SEARCH_COST
-                save_users(users)
+            # Deduct Credits (2 credits per search)
+            users[str(uid)]["credits"] -= SEARCH_COST
+            save_users(users)
 
-                details = (
-                    f"✅ Details Found\n\n"
-                    f"👤 Name: {res.get('name', 'N/A')}\n"
-                    f"👨‍👦 Father: {res.get('father_name', 'N/A')}\n"
-                    f"📍 Address: {res.get('address', 'N/A')}\n"
-                    f"📱 Mobile: {res.get('mobile', 'N/A')}\n"
-                    f"🌐 Circle: {res.get('circle', 'N/A')}\n\n"
-                    f"💳 Remaining Credits: {users[str(uid)]['credits']}"
-                )
+            # ✅ Details With Alternative Number Added
+            details = (
+                f"✅ Details Found\n\n"
+                f"👤 Name: {res.get('name', 'N/A')}\n"
+                f"👨‍👦 Father: {res.get('father_name', 'N/A')}\n"
+                f"📍 Address: {res.get('address', 'N/A')}\n"
+                f"📱 Mobile: {res.get('mobile', 'N/A')}\n"
+                f"📞 Alternative: {res.get('alt_number', 'N/A')}\n"
+                f"🌐 Circle: {res.get('circle', 'N/A')}\n\n"
+                f"💳 Remaining Credits: {users[str(uid)]['credits']}"
+            )
 
-                bot.reply_to(message, details)
+            bot.reply_to(message, details)
 
-            else:
-                bot.reply_to(message, "❌ No records found.")
+        else:
+            bot.reply_to(message, "❌ No records found.")
 
-        except:
-            bot.reply_to(message, "⚠️ API Error. Try again later.")
+    except:
+        bot.reply_to(message, "❌ Usage:\n/search 9876543210")
 
-    else:
-        bot.reply_to(message, "🚫 Invalid number! Enter 10 digits.")
+
+# ==============================
+# BLOCK RANDOM MESSAGES
+# ==============================
+
+@bot.message_handler(func=lambda message: True)
+def fallback(message):
+    bot.reply_to(
+        message,
+        "📌 Please use:\n/search 9876543210\n\n"
+        "To check credits:\n/balance"
+    )
 
 
 # ==============================
 # RUN BOT
 # ==============================
 
+print("🤖 Bot Started Successfully...")
 bot.infinity_polling()
