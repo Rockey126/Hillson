@@ -2,7 +2,6 @@ import telebot
 from telebot import types
 import requests
 import sqlite3
-import os
 from flask import Flask
 from threading import Thread
 
@@ -46,13 +45,17 @@ def update_credits(user_id, amount, is_new=False):
     conn.commit()
     conn.close()
 
-def get_all_users():
+def add_referral(referred_id):
     conn = sqlite3.connect('bot_data.db')
     cursor = conn.cursor()
-    cursor.execute("SELECT user_id FROM users")
-    users = cursor.fetchall()
-    conn.close()
-    return [u[0] for u in users]
+    try:
+        cursor.execute("INSERT INTO referrals (referred_id) VALUES (?)", (referred_id,))
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        return False
+    finally:
+        conn.close()
 
 # --- WEB SERVER FOR RENDER ---
 @app.route('/')
@@ -71,93 +74,114 @@ def main_menu():
     markup = types.InlineKeyboardMarkup(row_width=2)
     btn_search = types.InlineKeyboardButton("🔍 Start Search", callback_data="btn_search")
     btn_profile = types.InlineKeyboardButton("👤 Profile", callback_data="btn_profile")
+    btn_refer = types.InlineKeyboardButton("🔗 Referral", callback_data="btn_refer")
     btn_buy = types.InlineKeyboardButton("💰 Buy Credits", callback_data="btn_buy")
     markup.add(btn_search)
-    markup.add(btn_profile, btn_buy)
+    markup.add(btn_profile, btn_refer)
+    markup.add(btn_buy)
     return markup
 
-# --- ADMIN COMMANDS ---
-@bot.message_handler(commands=['add'])
-def manual_add(message):
-    """Usage: /add UserID Amount"""
-    if message.from_user.id == ADMIN_ID:
-        try:
-            parts = message.text.split()
-            target_id = int(parts[1])
-            amount = int(parts[2])
-            update_credits(target_id, amount)
-            bot.reply_to(message, f"✅ Added {amount} credits to `{target_id}`. \nNew Balance: {get_credits(target_id)}")
-            bot.send_message(target_id, f"🎁 Admin has added `{amount}` credits to your account!")
-        except Exception as e:
-            bot.reply_to(message, "❌ Format: `/add 12345678 50` ")
+def join_markup():
+    markup = types.InlineKeyboardMarkup()
+    btn_join = types.InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{CHANNEL_USER.replace('@', '')}")
+    btn_check = types.InlineKeyboardButton("🔄 Check Join Status", callback_data="check_join")
+    markup.add(btn_join)
+    markup.add(btn_check)
+    return markup
 
-@bot.message_handler(commands=['broadcast'])
-def broadcast(message):
-    if message.from_user.id == ADMIN_ID:
-        msg_text = message.text.replace('/broadcast ', '')
-        if msg_text == '/broadcast':
-            bot.reply_to(message, "❌ Use: `/broadcast Message` ")
-            return
-        users = get_all_users()
-        for user in users:
-            try: bot.send_message(user, msg_text)
-            except: pass
-        bot.reply_to(message, "✅ Broadcast completed.")
+# --- HELPERS ---
+def is_user_joined(user_id):
+    try:
+        member = bot.get_chat_member(CHANNEL_ID, user_id)
+        return member.status in ['member', 'administrator', 'creator']
+    except:
+        return False
 
-# --- BOT LOGIC ---
+# --- HANDLERS ---
 @bot.message_handler(commands=['start'])
 def start(message):
     uid = message.from_user.id
+    args = message.text.split()
+    
     if get_credits(uid) is None:
         update_credits(uid, 10, is_new=True)
+        if len(args) > 1 and args[1].isdigit():
+            referrer_id = int(args[1])
+            if referrer_id != uid:
+                if add_referral(uid):
+                    update_credits(referrer_id, 1) # +1 Credit per refer
+                    try:
+                        bot.send_message(referrer_id, "🎁 Aapko **1 Referral Credit** mila!")
+                    except: pass
+
+    if not is_user_joined(uid):
+        bot.send_message(message.chat.id, f"⚠️ **Join Required!**\nJoin {CHANNEL_USER} to use the bot.", reply_markup=join_markup())
+        return
+
     bot.send_message(message.chat.id, f"👋 Welcome! Owner: **{OWNER_NAME}**", reply_markup=main_menu())
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback_listener(call):
-    if call.data == "btn_search":
-        bot.send_message(call.message.chat.id, "🔢 **Ab wo 10-digit number bhejein jiski details chahiye.**")
+    uid = call.from_user.id
+    if call.data == "check_join":
+        if is_user_joined(uid):
+            bot.answer_callback_query(call.id, "✅ Success!")
+            bot.edit_message_text(f"👋 Welcome! Owner: **{OWNER_NAME}**", call.message.chat.id, call.message.message_id, reply_markup=main_menu())
+        else:
+            bot.answer_callback_query(call.id, "❌ Join first!", show_alert=True)
+    elif call.data == "btn_search":
+        bot.send_message(call.message.chat.id, "🔢 **Ab wo 10-digit number bhejein.**")
     elif call.data == "btn_profile":
-        bal = get_credits(call.from_user.id)
-        bot.edit_message_text(f"👤 **Profile**\nID: `{call.from_user.id}`\nBalance: `{bal}` credits", call.message.chat.id, call.message.message_id, reply_markup=main_menu())
+        bal = get_credits(uid)
+        bot.edit_message_text(f"👤 **Profile**\nID: `{uid}`\nBalance: `{bal}` Credits", call.message.chat.id, call.message.message_id, reply_markup=main_menu())
+    elif call.data == "btn_refer":
+        ref_link = f"https://t.me/{bot.get_me().username}?start={uid}"
+        bot.edit_message_text(f"🔗 **Your Referral Link**\n\n`{ref_link}`\n\n🎁 **Reward:** 1 Credit per friend!", call.message.chat.id, call.message.message_id, reply_markup=main_menu())
     elif call.data == "btn_buy":
-        bot.send_message(call.message.chat.id, f"💳 UPI ID: `{UPI_ID}`\nSend screenshot to Admin after payment.")
+        bot.send_message(call.message.chat.id, f"💳 **Buy Credits**\nUPI: `{UPI_ID}`\nPrice: ₹10 = 50 Credits\nScreenshot Admin ko bhejein.")
+
+@bot.message_handler(commands=['add'])
+def admin_add(message):
+    if message.from_user.id == ADMIN_ID:
+        try:
+            parts = message.text.split()
+            update_credits(int(parts[1]), int(parts[2]))
+            bot.reply_to(message, "✅ Credits Added Successfully.")
+        except:
+            bot.reply_to(message, "❌ Use: `/add UserID Amount` ")
 
 @bot.message_handler(func=lambda message: message.text.isdigit() and len(message.text) >= 10)
 def handle_search(message):
     uid = message.from_user.id
-    num = message.text.strip()
-    
-    # Check Credits
-    current_bal = get_credits(uid)
-    if current_bal < 2:
-        bot.reply_to(message, "❌ Credits khatam! Refer karein ya Buy karein.")
+    if not is_user_joined(uid):
+        bot.send_message(message.chat.id, "⚠️ Join First!", reply_markup=join_markup())
+        return
+    if get_credits(uid) < 2:
+        bot.reply_to(message, "❌ Low Balance! 2 credits required per search.")
         return
 
     bot.send_message(message.chat.id, "🔍 Searching...")
     try:
-        res = requests.get(f"https://username-brzb.vercel.app/get-info?phone={num}").json()
-        if res.get("status") and res.get("results"):
-            update_credits(uid, -2)
-            data = res["results"][0]
-            
-            # Detailed Result Message
+        response = requests.get(f"https://username-brzb.vercel.app/get-info?phone={message.text.strip()}", timeout=15)
+        data = response.json()
+        if data.get("status") == True and data.get("results") and len(data["results"]) > 0:
+            update_credits(uid, -2) # -2 Credits per search
+            res = data["results"][0]
             details = (
-                f"✅ **Details Found**\n"
-                f"━━━━━━━━━━━━━━━━━━\n"
-                f"👤 Name: `{data.get('name', 'N/A')}`\n"
-                f"👨‍👦 Father: `{data.get('father_name', 'N/A')}`\n"
-                f"📱 Mobile: `{data.get('mobile', 'N/A')}`\n"
-                f"📲 Alt Mobile: `{data.get('alt_mobile', 'N/A')}`\n"
-                f"🆔 ID Number: `{data.get('id_number', 'N/A')}`\n"
-                f"📍 Address: `{data.get('address', 'N/A')}`\n"
-                f"━━━━━━━━━━━━━━━━━━\n"
+                f"✅ **Details Found**\n━━━━━━━━━━━━━━━━━━\n"
+                f"👤 Name: `{res.get('name', 'N/A')}`\n"
+                f"👨‍👦 Father: `{res.get('father_name', 'N/A')}`\n"
+                f"📱 Mobile: `{res.get('mobile', 'N/A')}`\n"
+                f"📲 Alt Mobile: `{res.get('alt_mobile', 'N/A')}`\n"
+                f"🆔 ID Number: `{res.get('id_number', 'N/A')}`\n"
+                f"📍 Address: `{res.get('address', 'N/A')}`\n━━━━━━━━━━━━━━━━━━\n"
                 f"💰 Balance: {get_credits(uid)} credits"
             )
             bot.reply_to(message, details, parse_mode="Markdown", reply_markup=main_menu())
         else:
             bot.reply_to(message, "❌ No record found.")
-    except:
-        bot.reply_to(message, "⚠️ API Server error!")
+    except Exception as e:
+        bot.reply_to(message, "⚠️ API Error! Please try again later.")
 
 if __name__ == "__main__":
     init_db()
