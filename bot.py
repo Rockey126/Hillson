@@ -7,8 +7,7 @@ import json
 # ==============================
 
 BOT_TOKEN = "8280681654:AAHBYcWu6PusYYKezEWKwIcviya4zQeCxqk"
-bot = /addcredit 5768665344 100
-
+bot = telebot.TeleBot(BOT_TOKEN)
 OWNER_ID = 5768665344  # ✅ Fixed Owner ID
 
 DATA_FILE = "users.json"
