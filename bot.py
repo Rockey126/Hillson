@@ -6,8 +6,8 @@ import json
 # CONFIG
 # ==============================
 
-BOT_TOKEN = "8097849910:AAGL557NBwfu2Inv7IjLwnrc-xvAHpzaiKk"
-bot = telebot.TeleBot(BOT_TOKEN)
+BOT_TOKEN = "8351578422:AAFbMW_qj_zylyZXxhrk0xjk5bcpPavzock"
+bot = /addcredit 5768665344 100
 
 OWNER_ID = 5768665344  # ✅ Fixed Owner ID
 
