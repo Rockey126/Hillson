@@ -6,7 +6,7 @@ import json
 # CONFIG
 # ==============================
 
-BOT_TOKEN = "8351578422:AAFbMW_qj_zylyZXxhrk0xjk5bcpPavzock"
+BOT_TOKEN = "8280681654:AAHBYcWu6PusYYKezEWKwIcviya4zQeCxqk"
 bot = /addcredit 5768665344 100
 
 OWNER_ID = 5768665344  # ✅ Fixed Owner ID
